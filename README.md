@@ -13,6 +13,8 @@ parcial-2/
 ├── back-Despachos_SpringBoot/
 │   └── Springboot-API-REST-DESPACHO/ # API REST de despachos · puerto 8081
 ├── front_despacho/                   # Frontend React + Tailwind · puerto 3000
+├── docker-compose.yml
+├── .env                              # No se sube a GitHub
 ├── .gitignore
 └── README.md
 ```
@@ -27,6 +29,7 @@ parcial-2/
 | Backend Ventas | Spring Boot 3.4.4 · Java 17 · JPA · Lombok · Swagger |
 | Backend Despachos | Spring Boot 3.4.4 · Java 17 · JPA · Lombok · Swagger |
 | Base de datos | MySQL 8 |
+| Contenedores | Docker · Docker Compose |
 
 ---
 
@@ -83,23 +86,56 @@ Swagger UI: `http://localhost:8081/swagger-ui.html`
 
 ---
 
+## Etapa 2 — Despliegue local con Docker
+
+### Requisitos
+- Docker Desktop
+
+### Variables de entorno
+Crea un archivo `.env` en la raíz con:
+
+```env
+MYSQL_ROOT_PASSWORD= "Password de root"
+DB_NAME_VENTAS= "Nombre del database de ventas"
+DB_NAME_DESPACHOS= "Nombre del database de despachos"
+```
+
+### Levantar todo
+```bash
+docker compose up --build
+```
+
+### URLs disponibles
+| Servicio | URL |
+|----------|-----|
+| Frontend | http://localhost:3000 |
+| Backend Ventas | http://localhost:8080 |
+| Swagger Ventas | http://localhost:8080/swagger-ui.html |
+| Backend Despachos | http://localhost:8081 |
+| Swagger Despachos | http://localhost:8081/swagger-ui.html |
+
+### Detener contenedores
+```bash
+docker compose down
+```
+
+### Eliminar también el volumen de datos
+```bash
+docker compose down -v
+```
+
+---
+
 ## Estrategia de versionamiento
 
 ```
 main          ← código base inicial · solo se toca al inicio y al final
   └── develop ← rama de integración
-        ├── feature/dockerfile-backend-ventas
-        ├── feature/dockerfile-backend-despachos
-        ├── feature/dockerfile-frontend
-        ├── feature/docker-compose
-        └── feature/cicd-pipeline
-```
-
-Convención de commits:
-```
-feat: descripción de la funcionalidad agregada
-fix:  descripción del bug corregido
-docs: cambios en documentación
+        ├── feature/dockerfile-backend-ventas    ✅
+        ├── feature/dockerfile-backend-despachos ✅
+        ├── feature/dockerfile-frontend          ✅
+        ├── feature/docker-compose               ✅
+        └── feature/cicd-pipeline                ⏳
 ```
 
 ---
@@ -109,44 +145,6 @@ docs: cambios en documentación
 | Fase | Descripción | Estado |
 |------|-------------|--------|
 | **Etapa 1** | Repositorio base en GitHub | ✅ |
-| **Etapa 2** | Dockerfiles + docker-compose (despliegue local) | ⏳ |
+| **Etapa 2** | Dockerfiles + docker-compose (despliegue local) | ✅ |
 | **Etapa 3** | Infraestructura AWS con Terraform | ⏳ |
 | **Etapa 4** | Pipeline CI/CD con GitHub Actions | ⏳ |
-
----
-
-## Ejecución sin Docker (desarrollo local)
-
-### Requisitos
-- Java 17
-- Maven 3.9+
-- Node 20+
-- MySQL 8 corriendo en localhost:3306
-
-### Variables de entorno requeridas (backends)
-```
-DB_ENDPOINT=localhost
-DB_PORT=3306
-DB_NAME=ventas_db        # o despachos_db
-DB_USERNAME=root
-DB_PASSWORD=tu_password
-```
-
-### Backend Ventas
-```bash
-cd back-Ventas_SpringBoot/Springboot-API-REST
-./mvnw spring-boot:run
-```
-
-### Backend Despachos
-```bash
-cd back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-./mvnw spring-boot:run
-```
-
-### Frontend
-```bash
-cd front_despacho
-npm install
-npm run dev
-```
