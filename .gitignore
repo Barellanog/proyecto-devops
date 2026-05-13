@@ -1,0 +1,27 @@
+# MacOS
+.DS_Store
+
+# Maven
+target/
+*.jar
+*.war
+*.class
+
+# Node
+node_modules/
+dist/
+
+# Variables de entorno
+.env
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Logs
+*.log
