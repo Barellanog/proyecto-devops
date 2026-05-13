@@ -14,6 +14,13 @@ dist/
 # Variables de entorno
 .env
 
+# Terraform
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
 # IDEs
 .idea/
 *.iml

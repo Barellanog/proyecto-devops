@@ -13,6 +13,17 @@ parcial-2/
 ├── back-Despachos_SpringBoot/
 │   └── Springboot-API-REST-DESPACHO/ # API REST de despachos · puerto 8081
 ├── front_despacho/                   # Frontend React + Tailwind · puerto 3000
+├── infra/
+│   ├── etapa_1/                      # Solo repositorios ECR
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   └── terraform.tfvars          # No se sube a GitHub
+│   └── etapa_2/                      # Infraestructura completa AWS
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── outputs.tf
+│       └── terraform.tfvars          # No se sube a GitHub
 ├── docker-compose.yml
 ├── .env                              # No se sube a GitHub
 ├── .gitignore
@@ -30,6 +41,7 @@ parcial-2/
 | Backend Despachos | Spring Boot 3.4.4 · Java 17 · JPA · Lombok · Swagger |
 | Base de datos | MySQL 8 |
 | Contenedores | Docker · Docker Compose |
+| Infraestructura | Terraform · AWS ECS Fargate · ECR · EC2 |
 
 ---
 
@@ -92,12 +104,12 @@ Swagger UI: `http://localhost:8081/swagger-ui.html`
 - Docker Desktop
 
 ### Variables de entorno
-Crea un archivo `.env` en la raíz con:
+Crea un archivo `.env` en la raíz:
 
 ```env
-MYSQL_ROOT_PASSWORD= "Password de root"
-DB_NAME_VENTAS= "Nombre del database de ventas"
-DB_NAME_DESPACHOS= "Nombre del database de despachos"
+MYSQL_ROOT_PASSWORD=
+DB_NAME_VENTAS=
+DB_NAME_DESPACHOS=
 ```
 
 ### Levantar todo
@@ -109,19 +121,114 @@ docker compose up --build
 | Servicio | URL |
 |----------|-----|
 | Frontend | http://localhost:3000 |
-| Backend Ventas | http://localhost:8080 |
 | Swagger Ventas | http://localhost:8080/swagger-ui.html |
-| Backend Despachos | http://localhost:8081 |
 | Swagger Despachos | http://localhost:8081/swagger-ui.html |
 
 ### Detener contenedores
 ```bash
-docker compose down
+docker compose down        # detiene y elimina contenedores
+docker compose down -v     # elimina también el volumen de datos
 ```
 
-### Eliminar también el volumen de datos
+---
+
+## Etapa 3 — Infraestructura AWS con Terraform
+
+### Arquitectura en AWS
+
+```
+Internet
+    │
+    ▼
+ECS Fargate Task (IP pública)
+    ├── frontend          (puerto 80)
+    ├── backend-ventas    (puerto 8080)
+    └── backend-despachos (puerto 8081)
+              │
+              ▼
+       EC2 MySQL (puerto 3306 · 30 GB · t3.micro)
+```
+
+> En ECS Fargate los tres contenedores comparten el mismo namespace de red,
+> por lo que nginx hace proxy a localhost:8080 y localhost:8081.
+
+### Requisitos
+- Terraform instalado (`terraform -v`)
+- AWS CLI instalado (`aws --version`)
+- Key pair creado en AWS → EC2 → Key Pairs
+
+### Credenciales AWS (LabRole)
+En AWS Academy → AWS Details → copia y pega en `~/.aws/credentials`:
+
+```
+[default]
+aws_access_key_id     = ASIA...
+aws_secret_access_key = ...
+aws_session_token     = ...
+```
+
+> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Renuévalas antes de cada `terraform apply`.
+
+
+```
+
+### Etapa 3a — Crear repositorios ECR
+
 ```bash
-docker compose down -v
+cd infra/etapa_1
+terraform init
+terraform apply
+```
+
+### Etapa 3b — Build y push de imágenes a ECR
+
+```bash
+# Login a ECR
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin 975050276487.dkr.ecr.us-east-1.amazonaws.com
+
+# Backend Ventas
+docker build --platform linux/amd64 \
+  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-ventas:latest \
+  ./back-Ventas_SpringBoot/Springboot-API-REST
+docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-ventas:latest
+
+# Backend Despachos
+docker build --platform linux/amd64 \
+  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-despachos:latest \
+  ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-despachos:latest
+
+# Frontend
+docker build --platform linux/amd64 \
+  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-frontend:latest \
+  ./front_despacho
+docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-frontend:latest
+```
+
+### Etapa 3c — Levantar infraestructura completa
+
+```bash
+cd infra/etapa_2
+terraform init
+terraform apply
+```
+
+Los valores sensibles se leen automáticamente desde `terraform.tfvars`.
+
+### URLs en AWS
+Una vez desplegado, ve a ECS → Clusters → devops-parcial2-cluster → Tasks → tarea activa → copia la IP pública.
+
+| Servicio | URL |
+|----------|-----|
+| Frontend | `http://<IP_TAREA_ECS>` |
+| Swagger Ventas | `http://<IP_TAREA_ECS>:8080/swagger-ui.html` |
+| Swagger Despachos | `http://<IP_TAREA_ECS>:8081/swagger-ui.html` |
+
+### Destruir infraestructura
+```bash
+cd infra/etapa_2
+terraform destroy
 ```
 
 ---
@@ -135,6 +242,8 @@ main          ← código base inicial · solo se toca al inicio y al final
         ├── feature/dockerfile-backend-despachos ✅
         ├── feature/dockerfile-frontend          ✅
         ├── feature/docker-compose               ✅
+        ├── fix/jdbc-connection-mysql8           ✅
+        ├── feature/terraform-infra              ✅
         └── feature/cicd-pipeline                ⏳
 ```
 
@@ -146,5 +255,5 @@ main          ← código base inicial · solo se toca al inicio y al final
 |------|-------------|--------|
 | **Etapa 1** | Repositorio base en GitHub | ✅ |
 | **Etapa 2** | Dockerfiles + docker-compose (despliegue local) | ✅ |
-| **Etapa 3** | Infraestructura AWS con Terraform | ⏳ |
+| **Etapa 3** | Infraestructura AWS con Terraform | ✅ |
 | **Etapa 4** | Pipeline CI/CD con GitHub Actions | ⏳ |
