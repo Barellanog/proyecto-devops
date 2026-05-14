@@ -14,18 +14,18 @@ parcial-2/
 │   └── Springboot-API-REST-DESPACHO/ # API REST de despachos · puerto 8081
 ├── front_despacho/                   # Frontend React + Tailwind · puerto 3000
 ├── infra/
-│   ├── etapa_1/                      # Solo repositorios ECR
+│   ├── etapa_1/                      # Repositorios ECR únicamente
 │   │   ├── main.tf
 │   │   ├── variables.tf
 │   │   ├── outputs.tf
-│   │   └── terraform.tfvars          # No se sube a GitHub
+│   │   └── terraform.tfvars          # ⚠️ No se sube a GitHub — crear manualmente
 │   └── etapa_2/                      # Infraestructura completa AWS
 │       ├── main.tf
 │       ├── variables.tf
 │       ├── outputs.tf
-│       └── terraform.tfvars          # No se sube a GitHub
+│       └── terraform.tfvars          # ⚠️ No se sube a GitHub — crear manualmente
 ├── docker-compose.yml
-├── .env                              # No se sube a GitHub
+├── .env                              # ⚠️ No se sube a GitHub — crear manualmente
 ├── .gitignore
 └── README.md
 ```
@@ -103,31 +103,36 @@ Swagger UI: `http://localhost:8081/swagger-ui.html`
 ### Requisitos
 - Docker Desktop
 
-### Variables de entorno
-Crea un archivo `.env` en la raíz:
+### 1. Crear el archivo de variables de entorno
+
+Crea el archivo `.env` en la **raíz del proyecto** (no se sube a GitHub):
 
 ```env
-MYSQL_ROOT_PASSWORD=
-DB_NAME_VENTAS=
-DB_NAME_DESPACHOS=
+MYSQL_ROOT_PASSWORD=<TU_PASSWORD>
+DB_NAME_VENTAS=ventas_db
+DB_NAME_DESPACHOS=despachos_db
 ```
 
-### Levantar todo
+### 2. Levantar todos los servicios
+
 ```bash
 docker compose up --build
 ```
 
-### URLs disponibles
+### 3. URLs disponibles
+
 | Servicio | URL |
 |----------|-----|
 | Frontend | http://localhost:3000 |
 | Swagger Ventas | http://localhost:8080/swagger-ui.html |
 | Swagger Despachos | http://localhost:8081/swagger-ui.html |
 
-### Detener contenedores
+### Comandos útiles
+
 ```bash
 docker compose down        # detiene y elimina contenedores
 docker compose down -v     # elimina también el volumen de datos
+docker compose logs -f     # ver logs en tiempo real
 ```
 
 ---
@@ -155,58 +160,43 @@ ECS Fargate Task (IP pública)
 ### Requisitos
 - Terraform instalado (`terraform -v`)
 - AWS CLI instalado (`aws --version`)
+- Docker Desktop
 - Key pair creado en AWS → EC2 → Key Pairs
 
-### Credenciales AWS (LabRole)
+### 1. Configurar credenciales AWS
+
 En AWS Academy → AWS Details → copia y pega en `~/.aws/credentials`:
 
 ```
 [default]
-aws_access_key_id     = ASIA...
-aws_secret_access_key = ...
-aws_session_token     = ...
+aws_access_key_id     = <ACCESS_KEY>
+aws_secret_access_key = <SECRET_KEY>
+aws_session_token     = <SESSION_TOKEN>
 ```
 
 > ⚠️ Las credenciales del LabRole expiran cada 4 horas. Renuévalas antes de cada `terraform apply`.
 
+### 2. Crear los archivos de variables de Terraform
 
+Estos archivos no se suben a GitHub y deben crearse manualmente al clonar el repositorio.
+
+`infra/etapa_1/terraform.tfvars`:
+```hcl
+aws_region   = "us-east-1"
+project_name = "<NOMBRE_DEL_PROYECTO>"
 ```
 
-### Etapa 3a — Crear repositorios ECR
-
-```bash
-cd infra/etapa_1
-terraform init
-terraform apply
+`infra/etapa_2/terraform.tfvars`:
+```hcl
+aws_region    = "us-east-1"
+project_name  = "<NOMBRE_DEL_PROYECTO>"
+key_pair_name = "<NOMBRE_DE_TU_KEY_PAIR>"
+db_password   = "<TU_PASSWORD>"
 ```
 
-### Etapa 3b — Build y push de imágenes a ECR
+> El `project_name` debe ser el mismo en ambos archivos.
 
-```bash
-# Login a ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 975050276487.dkr.ecr.us-east-1.amazonaws.com
-
-# Backend Ventas
-docker build --platform linux/amd64 \
-  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-ventas:latest \
-  ./back-Ventas_SpringBoot/Springboot-API-REST
-docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-ventas:latest
-
-# Backend Despachos
-docker build --platform linux/amd64 \
-  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-despachos:latest \
-  ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-backend-despachos:latest
-
-# Frontend
-docker build --platform linux/amd64 \
-  -t 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-frontend:latest \
-  ./front_despacho
-docker push 975050276487.dkr.ecr.us-east-1.amazonaws.com/devops-parcial2-frontend:latest
-```
-
-### Etapa 3c — Levantar infraestructura completa
+### 3. Levantar la infraestructura
 
 ```bash
 cd infra/etapa_2
@@ -214,10 +204,69 @@ terraform init
 terraform apply
 ```
 
-Los valores sensibles se leen automáticamente desde `terraform.tfvars`.
+Terraform creará:
+- VPC + subnet pública + internet gateway
+- Security groups (puertos 22, 80, 8080, 8081, 3306)
+- 3 repositorios ECR (frontend, backend-ventas, backend-despachos)
+- EC2 para MySQL (30 GB · t3.micro)
+- ECS Fargate cluster + task con los 3 contenedores
+- CloudWatch log group (retención 7 días)
 
-### URLs en AWS
-Una vez desplegado, ve a ECS → Clusters → devops-parcial2-cluster → Tasks → tarea activa → copia la IP pública.
+### 4. Build y push de imágenes a ECR
+
+Desde la **raíz del proyecto**, reemplaza `<ACCOUNT_ID>` y `<NOMBRE_DEL_PROYECTO>`:
+
+```bash
+# Login a ECR
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
+
+# Backend Ventas
+docker build --platform linux/amd64 \
+  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-ventas:latest \
+  ./back-Ventas_SpringBoot/Springboot-API-REST
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-ventas:latest
+
+# Backend Despachos
+docker build --platform linux/amd64 \
+  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-despachos:latest \
+  ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-despachos:latest
+
+# Frontend
+docker build --platform linux/amd64 \
+  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-frontend:latest \
+  ./front_despacho
+docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-frontend:latest
+```
+
+### 5. Forzar redespliegue en ECS
+
+```bash
+aws ecs update-service \
+  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
+  --service app \
+  --force-new-deployment \
+  --region us-east-1
+```
+
+### 6. Obtener la IP pública de la tarea
+
+```bash
+# Listar tareas activas
+aws ecs list-tasks \
+  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
+  --region us-east-1
+
+# Obtener IP de la tarea
+aws ecs describe-tasks \
+  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
+  --tasks <ARN_DE_LA_TAREA> \
+  --region us-east-1 \
+  | grep publicIp
+```
+
+### 7. URLs en AWS
 
 | Servicio | URL |
 |----------|-----|
@@ -226,6 +275,7 @@ Una vez desplegado, ve a ECS → Clusters → devops-parcial2-cluster → Tasks 
 | Swagger Despachos | `http://<IP_TAREA_ECS>:8081/swagger-ui.html` |
 
 ### Destruir infraestructura
+
 ```bash
 cd infra/etapa_2
 terraform destroy
@@ -245,6 +295,13 @@ main          ← código base inicial · solo se toca al inicio y al final
         ├── fix/jdbc-connection-mysql8           ✅
         ├── feature/terraform-infra              ✅
         └── feature/cicd-pipeline                ⏳
+```
+
+Convención de commits:
+```
+feat: descripción de la funcionalidad agregada
+fix:  descripción del bug corregido
+docs: cambios en documentación
 ```
 
 ---
