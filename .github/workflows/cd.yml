@@ -59,3 +59,36 @@ jobs:
             --service ${{ env.SERVICE }} \
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
+
+      - name: Esperar tarea activa y obtener IP pública
+        run: |
+          echo "Esperando que el servicio estabilice..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.CLUSTER }} \
+            --services ${{ env.SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+
+          TASK_ARN=$(aws ecs list-tasks \
+            --cluster ${{ env.CLUSTER }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskArns[0]' \
+            --output text)
+
+          ENI_ID=$(aws ecs describe-tasks \
+            --cluster ${{ env.CLUSTER }} \
+            --tasks $TASK_ARN \
+            --region ${{ env.AWS_REGION }} \
+            --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+            --output text)
+
+          PUBLIC_IP=$(aws ec2 describe-network-interfaces \
+            --network-interface-ids $ENI_ID \
+            --region ${{ env.AWS_REGION }} \
+            --query 'NetworkInterfaces[0].Association.PublicIp' \
+            --output text)
+
+          echo "========================================"
+          echo "  Frontend:           http://$PUBLIC_IP"
+          echo "  Swagger Ventas:     http://$PUBLIC_IP:8080/swagger-ui.html"
+          echo "  Swagger Despachos:  http://$PUBLIC_IP:8081/swagger-ui.html"
+          echo "========================================"
