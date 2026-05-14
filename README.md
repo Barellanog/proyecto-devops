@@ -15,15 +15,10 @@ parcial-2/
 ├── front_despacho/                   # Frontend React + Tailwind · puerto 3000
 ├── infra/
 │   ├── etapa_1/                      # Repositorios ECR únicamente
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   │   └── terraform.tfvars          # ⚠️ No se sube a GitHub — crear manualmente
 │   └── etapa_2/                      # Infraestructura completa AWS
-│       ├── main.tf
-│       ├── variables.tf
-│       ├── outputs.tf
-│       └── terraform.tfvars          # ⚠️ No se sube a GitHub — crear manualmente
+├── .github/
+│   └── workflows/
+│       └── cd.yml                    # Pipeline CI/CD
 ├── docker-compose.yml
 ├── .env                              # ⚠️ No se sube a GitHub — crear manualmente
 ├── .gitignore
@@ -42,6 +37,7 @@ parcial-2/
 | Base de datos | MySQL 8 |
 | Contenedores | Docker · Docker Compose |
 | Infraestructura | Terraform · AWS ECS Fargate · ECR · EC2 |
+| CI/CD | GitHub Actions |
 
 ---
 
@@ -105,7 +101,7 @@ Swagger UI: `http://localhost:8081/swagger-ui.html`
 
 ### 1. Crear el archivo de variables de entorno
 
-Crea el archivo `.env` en la **raíz del proyecto** (no se sube a GitHub):
+Crea el archivo `.env` en la raíz del proyecto (no se sube a GitHub):
 
 ```env
 MYSQL_ROOT_PASSWORD=<TU_PASSWORD>
@@ -174,11 +170,11 @@ aws_secret_access_key = <SECRET_KEY>
 aws_session_token     = <SESSION_TOKEN>
 ```
 
-> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Renuévalas antes de cada `terraform apply`.
+> ⚠️ Las credenciales del LabRole expiran cada 4 horas.
 
-### 2. Crear los archivos de variables de Terraform
+### 2. Crear archivos de variables Terraform
 
-Estos archivos no se suben a GitHub y deben crearse manualmente al clonar el repositorio.
+Estos archivos no se suben a GitHub y deben crearse manualmente.
 
 `infra/etapa_1/terraform.tfvars`:
 ```hcl
@@ -194,9 +190,7 @@ key_pair_name = "<NOMBRE_DE_TU_KEY_PAIR>"
 db_password   = "<TU_PASSWORD>"
 ```
 
-> El `project_name` debe ser el mismo en ambos archivos.
-
-### 3. Levantar la infraestructura
+### 3. Levantar infraestructura
 
 ```bash
 cd infra/etapa_2
@@ -204,17 +198,9 @@ terraform init
 terraform apply
 ```
 
-Terraform creará:
-- VPC + subnet pública + internet gateway
-- Security groups (puertos 22, 80, 8080, 8081, 3306)
-- 3 repositorios ECR (frontend, backend-ventas, backend-despachos)
-- EC2 para MySQL (30 GB · t3.micro)
-- ECS Fargate cluster + task con los 3 contenedores
-- CloudWatch log group (retención 7 días)
-
 ### 4. Build y push de imágenes a ECR
 
-Desde la **raíz del proyecto**, reemplaza `<ACCOUNT_ID>` y `<NOMBRE_DEL_PROYECTO>`:
+Desde la raíz del proyecto:
 
 ```bash
 # Login a ECR
@@ -250,15 +236,11 @@ aws ecs update-service \
   --region us-east-1
 ```
 
-### 6. Obtener la IP pública de la tarea
+### 6. Obtener IP pública de la tarea
 
 ```bash
-# Listar tareas activas
-aws ecs list-tasks \
-  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
-  --region us-east-1
+aws ecs list-tasks --cluster <NOMBRE_DEL_PROYECTO>-cluster --region us-east-1
 
-# Obtener IP de la tarea
 aws ecs describe-tasks \
   --cluster <NOMBRE_DEL_PROYECTO>-cluster \
   --tasks <ARN_DE_LA_TAREA> \
@@ -266,7 +248,7 @@ aws ecs describe-tasks \
   | grep publicIp
 ```
 
-### 7. URLs en AWS
+### URLs en AWS
 
 | Servicio | URL |
 |----------|-----|
@@ -283,10 +265,62 @@ terraform destroy
 
 ---
 
+## Etapa 4 — Pipeline CI/CD con GitHub Actions
+
+El pipeline se dispara automáticamente al hacer push a `main` y realiza el build, push a ECR y redespliegue en ECS de los tres servicios en un solo job.
+
+### Flujo del pipeline
+
+```
+push a main
+    │
+    ▼
+Checkout código
+    │
+    ▼
+Configurar credenciales AWS
+    │
+    ▼
+Login en ECR
+    │
+    ├── Build y Push backend-ventas
+    ├── Build y Push backend-despachos
+    └── Build y Push frontend
+    │
+    ▼
+Forzar redespliegue en ECS
+```
+
+### Secrets requeridos en GitHub
+
+Ve a tu repositorio → Settings → Secrets and variables → Actions → New repository secret y agrega los siguientes:
+
+| Secret | Descripción |
+|--------|-------------|
+| `AWS_ACCESS_KEY_ID` | Access key del LabRole (AWS Academy → AWS Details) |
+| `AWS_SECRET_ACCESS_KEY` | Secret key del LabRole |
+| `AWS_SESSION_TOKEN` | Session token del LabRole |
+| `AWS_ACCOUNT_ID` | ID de tu cuenta AWS |
+
+> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Antes de hacer un push a `main` debes actualizar los tres secrets de AWS con las credenciales vigentes.
+
+### Cómo actualizar los secrets de AWS
+
+1. En AWS Academy → AWS Details → copia las credenciales actuales
+2. En GitHub → Settings → Secrets and variables → Actions
+3. Actualiza `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`
+4. Haz el push a `main`
+
+### Disparar el pipeline manualmente
+
+Desde GitHub → Actions → Despliegue continuo → Run workflow.
+
+---
+
 ## Estrategia de versionamiento
 
 ```
-main          ← código base inicial · solo se toca al inicio y al final
+main          ← código base inicial · push a main dispara el pipeline CI/CD
   └── develop ← rama de integración
         ├── feature/dockerfile-backend-ventas    ✅
         ├── feature/dockerfile-backend-despachos ✅
@@ -294,7 +328,7 @@ main          ← código base inicial · solo se toca al inicio y al final
         ├── feature/docker-compose               ✅
         ├── fix/jdbc-connection-mysql8           ✅
         ├── feature/terraform-infra              ✅
-        └── feature/cicd-pipeline                ⏳
+        └── feature/cicd-pipeline                ✅
 ```
 
 Convención de commits:
@@ -313,4 +347,4 @@ docs: cambios en documentación
 | **Etapa 1** | Repositorio base en GitHub | ✅ |
 | **Etapa 2** | Dockerfiles + docker-compose (despliegue local) | ✅ |
 | **Etapa 3** | Infraestructura AWS con Terraform | ✅ |
-| **Etapa 4** | Pipeline CI/CD con GitHub Actions | ⏳ |
+| **Etapa 4** | Pipeline CI/CD con GitHub Actions | ✅ |
