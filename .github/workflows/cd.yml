@@ -79,7 +79,12 @@ jobs:
         run: |
           kubectl delete secret mysql-secret --ignore-not-found
           kubectl create secret generic mysql-secret \
-            --from-literal=MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+            --from-literal=MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }} \
+            --from-literal=DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} \
+            --from-literal=DB_PORT=${{ secrets.DB_PORT }} \
+            --from-literal=DB_USERNAME=${{ secrets.DB_USERNAME }} \
+            --from-literal=DB_NAME_VENTAS=${{ secrets.DB_NAME_VENTAS }} \
+            --from-literal=DB_NAME_DESPACHOS=${{ secrets.DB_NAME_DESPACHOS }}
 
       - name: Aplicar manifiestos Kubernetes
         run: |

@@ -21,23 +21,23 @@ spec:
           env:
             - name: DB_ENDPOINT
               valueFrom:
-                configMapKeyRef:
-                  name: app-config
+                secretKeyRef:
+                  name: mysql-secret
                   key: DB_ENDPOINT
             - name: DB_PORT
               valueFrom:
-                configMapKeyRef:
-                  name: app-config
+                secretKeyRef:
+                  name: mysql-secret
                   key: DB_PORT
             - name: DB_NAME
               valueFrom:
-                configMapKeyRef:
-                  name: app-config
+                secretKeyRef:
+                  name: mysql-secret
                   key: DB_NAME_DESPACHOS
             - name: DB_USERNAME
               valueFrom:
-                configMapKeyRef:
-                  name: app-config
+                secretKeyRef:
+                  name: mysql-secret
                   key: DB_USERNAME
             - name: DB_PASSWORD
               valueFrom:
