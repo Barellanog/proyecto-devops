@@ -1,0 +1,18 @@
+# ============================================
+# Template de variables para Terraform
+# Copiar este archivo como terraform.tfvars
+# ============================================
+
+aws_region    = "us-east-1"
+project_name  = "devops-parcial2"
+
+# Red
+vpc_cidr      = "10.0.0.0/16"
+subnet_1_cidr = "10.0.10.0/24"
+subnet_2_cidr = "10.0.20.0/24"
+
+# EKS Node Group
+node_instance_type = "t3.medium"
+node_desired_size  = 2
+node_max_size      = 2
+node_min_size      = 1

@@ -14,6 +14,9 @@ dist/
 # Variables de entorno
 .env
 
+# Secrets de Kubernetes
+infra/k8s/mysql-secret.yml
+
 # Terraform
 *.tfvars
 *.tfstate

@@ -1,26 +1,41 @@
 # Sistema de Gestión de Ventas y Despachos
 
-Aplicación web de gestión de ventas y despachos para Innovatech Chile, compuesta por dos microservicios backend independientes y un frontend React.
+Aplicación web de gestión de ventas y despachos para Innovatech Chile, compuesta por dos microservicios backend independientes y un frontend React, desplegada en AWS EKS con infraestructura como código (Terraform) y CI/CD con GitHub Actions.
 
 ---
 
 ## Estructura del proyecto
 
 ```
-parcial-2/
+proyecto-devops/
 ├── back-Ventas_SpringBoot/
-│   └── Springboot-API-REST/          # API REST de ventas  · puerto 8080
+│   └── Springboot-API-REST/            # API REST de ventas  · puerto 8080
 ├── back-Despachos_SpringBoot/
-│   └── Springboot-API-REST-DESPACHO/ # API REST de despachos · puerto 8081
-├── front_despacho/                   # Frontend React + Tailwind · puerto 3000
+│   └── Springboot-API-REST-DESPACHO/   # API REST de despachos · puerto 8081
+├── front_despacho/                     # Frontend React + Tailwind · puerto 80
 ├── infra/
-│   ├── etapa_1/                      # Repositorios ECR únicamente
-│   └── etapa_2/                      # Infraestructura completa AWS
+│   ├── k8s/
+│   │   ├── mysql.yml                   # Deployment + Service MySQL
+│   │   ├── backend-ventas.yml          # Deployment + Service Backend Ventas
+│   │   ├── backend-despachos.yml       # Deployment + Service Backend Despachos
+│   │   ├── frontend.yml                # Deployment + Service Frontend (LoadBalancer)
+│   │   └── mysql-secret.yml            # Secret K8s (NO se sube a GitHub)
+│   └── terraform/
+│       ├── providers.tf                # Provider AWS + LabRole
+│       ├── variables.tf                # Variables reutilizables
+│       ├── vpc.tf                      # VPC + Subnets + IGW
+│       ├── security-groups.tf          # Security Groups para nodos
+│       ├── ecr.tf                      # Repositorios ECR (3)
+│       ├── eks.tf                      # Cluster EKS + Node Group
+│       ├── outputs.tf                  # Outputs de Terraform
+│       └── terraform.tfvars.example    # Template de variables
 ├── .github/
 │   └── workflows/
-│       └── cd.yml                    # Pipeline CI/CD
+│       ├── ci.yml                      # Integración Continua (PR a main)
+│       └── cd.yml                      # Despliegue Continuo (push a deploy)
 ├── docker-compose.yml
-├── .env                              # ⚠️ No se sube a GitHub — crear manualmente
+├── .env                                # Variables locales (NO se sube a GitHub)
+├── .env.example                        # Template de variables locales
 ├── .gitignore
 └── README.md
 ```
@@ -31,13 +46,14 @@ parcial-2/
 
 | Capa | Tecnología |
 |------|-----------|
-| Frontend | React 18 · Vite 5 · Tailwind CSS · Axios |
+| Frontend | React 18 · Vite 5 · Tailwind CSS · Axios · Nginx |
 | Backend Ventas | Spring Boot 3.4.4 · Java 17 · JPA · Lombok · Swagger |
 | Backend Despachos | Spring Boot 3.4.4 · Java 17 · JPA · Lombok · Swagger |
-| Base de datos | MySQL 8 |
+| Base de datos | MySQL 8 (Pod en Kubernetes) |
 | Contenedores | Docker · Docker Compose |
-| Infraestructura | Terraform · AWS ECS Fargate · ECR · EC2 |
-| CI/CD | GitHub Actions |
+| Infraestructura | Terraform · AWS EKS · ECR |
+| Orquestación | Kubernetes (EKS) |
+| CI/CD | GitHub Actions (CI + CD separados) |
 
 ---
 
@@ -68,7 +84,7 @@ parcial-2/
 
 ## Endpoints
 
-### Backend Ventas — `http://localhost:8080`
+### Backend Ventas — `http://<HOST>:8080`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
@@ -78,9 +94,9 @@ parcial-2/
 | PUT | `/api/v1/ventas/{id}` | Actualizar venta |
 | DELETE | `/api/v1/ventas/{id}` | Eliminar venta |
 
-Swagger UI: `http://localhost:8080/swagger-ui.html`
+Swagger UI: `http://<HOST>:8080/swagger-ui.html`
 
-### Backend Despachos — `http://localhost:8081`
+### Backend Despachos — `http://<HOST>:8081`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
@@ -90,24 +106,24 @@ Swagger UI: `http://localhost:8080/swagger-ui.html`
 | PUT | `/api/v1/despachos/{id}` | Actualizar despacho |
 | DELETE | `/api/v1/despachos/{id}` | Eliminar despacho |
 
-Swagger UI: `http://localhost:8081/swagger-ui.html`
+Swagger UI: `http://<HOST>:8081/swagger-ui.html`
 
 ---
 
-## Etapa 2 — Despliegue local con Docker
+## Despliegue local con Docker Compose
 
 ### Requisitos
 - Docker Desktop
 
-### 1. Crear el archivo de variables de entorno
+### 1. Crear archivo `.env`
 
-Crea el archivo `.env` en la raíz del proyecto (no se sube a GitHub):
+Copia el template y edita con tus valores:
 
-```env
-MYSQL_ROOT_PASSWORD=<TU_PASSWORD>
-DB_NAME_VENTAS=ventas_db
-DB_NAME_DESPACHOS=despachos_db
+```bash
+cp .env.example .env
 ```
+
+El archivo `.env.example` contiene placeholders. El `.env` real no se sube a GitHub.
 
 ### 2. Levantar todos los servicios
 
@@ -115,7 +131,7 @@ DB_NAME_DESPACHOS=despachos_db
 docker compose up --build
 ```
 
-### 3. URLs disponibles
+### 3. URLs locales
 
 | Servicio | URL |
 |----------|-----|
@@ -133,7 +149,7 @@ docker compose logs -f     # ver logs en tiempo real
 
 ---
 
-## Etapa 3 — Infraestructura AWS con Terraform
+## Infraestructura AWS con Terraform y Kubernetes
 
 ### Arquitectura en AWS
 
@@ -141,210 +157,176 @@ docker compose logs -f     # ver logs en tiempo real
 Internet
     │
     ▼
-ECS Fargate Task (IP pública)
-    ├── frontend          (puerto 80)
-    ├── backend-ventas    (puerto 8080)
-    └── backend-despachos (puerto 8081)
-              │
-              ▼
-       EC2 MySQL (puerto 3306 · 30 GB · t3.micro)
+LoadBalancer (frontend — puerto 80)
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  EKS Cluster (devops-parcial2)      │
+│                                      │
+│  ┌──────────────┐  ┌──────────────┐ │
+│  │ backend-ventas│  │backend-desp. │ │
+│  │   (2 pods)   │  │   (2 pods)   │ │
+│  │   :8080      │  │   :8081      │ │
+│  └──────┬───────┘  └──────┬───────┘ │
+│         │                 │         │
+│  ┌──────┴─────────────────┴───────┐ │
+│  │         mysql (1 pod)          │ │
+│  │            :3306               │ │
+│  └────────────────────────────────┘ │
+│                                      │
+│  ┌──────────┐  ┌──────────┐        │
+│  │ frontend │  │ frontend │        │
+│  │  (1 pod) │  │  (1 pod) │        │
+│  │   :80    │  │   :80    │        │
+│  └──────────┘  └──────────┘        │
+│                                      │
+│  Node Group: 2 x t3.medium          │
+└─────────────────────────────────────┘
 ```
 
-> En ECS Fargate los tres contenedores comparten el mismo namespace de red,
-> por lo que nginx hace proxy a localhost:8080 y localhost:8081.
-
 ### Requisitos
-- Terraform instalado (`terraform -v`)
-- AWS CLI instalado (`aws --version`)
-- Docker Desktop
-- Key pair creado en AWS → EC2 → Key Pairs
+- Terraform instalado
+- AWS CLI instalado y configurado
+- kubectl instalado
 
 ### 1. Configurar credenciales AWS
 
-En AWS Academy → AWS Details → copia y pega en `~/.aws/credentials`:
-
-```
-[default]
-aws_access_key_id     = <ACCESS_KEY>
-aws_secret_access_key = <SECRET_KEY>
-aws_session_token     = <SESSION_TOKEN>
-```
-
-> ⚠️ Las credenciales del LabRole expiran cada 4 horas.
-
-### 2. Crear archivos de variables Terraform
-
-Estos archivos no se suben a GitHub y deben crearse manualmente.
-
-`infra/etapa_1/terraform.tfvars`:
-```hcl
-aws_region   = "us-east-1"
-project_name = "<NOMBRE_DEL_PROYECTO>"
-```
-
-`infra/etapa_2/terraform.tfvars`:
-```hcl
-aws_region    = "us-east-1"
-project_name  = "<NOMBRE_DEL_PROYECTO>"
-key_pair_name = "<NOMBRE_DE_TU_KEY_PAIR>"
-db_password   = "<TU_PASSWORD>"
-```
-
-### 3. Levantar infraestructura
+Desde AWS Academy → AWS Details, copia las credenciales y configura:
 
 ```bash
-cd infra/etapa_2
+aws configure
+```
+
+> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Debes renovarlas antes de cada operación.
+
+### 2. Crear archivo de variables Terraform
+
+```bash
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edita `terraform.tfvars` si necesitas cambiar algún valor. El archivo no se sube a GitHub.
+
+### 3. Crear la infraestructura
+
+```bash
+cd infra/terraform
 terraform init
+terraform plan
 terraform apply
 ```
 
-### 4. Build y push de imágenes a ECR
+> ⏱️ El `apply` tarda aproximadamente 12–15 minutos por el cluster EKS.
 
-Desde la raíz del proyecto:
+### 4. Conectar kubectl al cluster
 
 ```bash
-# Login a ECR
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
-
-# Backend Ventas
-docker build --platform linux/amd64 \
-  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-ventas:latest \
-  ./back-Ventas_SpringBoot/Springboot-API-REST
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-ventas:latest
-
-# Backend Despachos
-docker build --platform linux/amd64 \
-  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-despachos:latest \
-  ./back-Despachos_SpringBoot/Springboot-API-REST-DESPACHO
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-backend-despachos:latest
-
-# Frontend
-docker build --platform linux/amd64 \
-  -t <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-frontend:latest \
-  ./front_despacho
-docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<NOMBRE_DEL_PROYECTO>-frontend:latest
+aws eks update-kubeconfig --region us-east-1 --name devops-parcial2-cluster
+kubectl get nodes    # deberías ver 2 nodos Ready
 ```
 
-### 5. Forzar redespliegue en ECS
+### 5. Destruir infraestructura
 
 ```bash
-aws ecs update-service \
-  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
-  --service app \
-  --force-new-deployment \
-  --region us-east-1
-```
-
-### 6. Obtener IP pública de la tarea
-
-```bash
-aws ecs list-tasks --cluster <NOMBRE_DEL_PROYECTO>-cluster --region us-east-1
-
-aws ecs describe-tasks \
-  --cluster <NOMBRE_DEL_PROYECTO>-cluster \
-  --tasks <ARN_DE_LA_TAREA> \
-  --region us-east-1 \
-  | grep publicIp
-```
-
-### URLs en AWS
-
-| Servicio | URL |
-|----------|-----|
-| Frontend | `http://<IP_TAREA_ECS>` |
-| Swagger Ventas | `http://<IP_TAREA_ECS>:8080/swagger-ui.html` |
-| Swagger Despachos | `http://<IP_TAREA_ECS>:8081/swagger-ui.html` |
-
-### Destruir infraestructura
-
-```bash
-cd infra/etapa_2
+cd infra/terraform
 terraform destroy
 ```
 
 ---
 
-## Etapa 4 — Pipeline CI/CD con GitHub Actions
+## Pipeline CI/CD con GitHub Actions
 
-El pipeline se dispara automáticamente al hacer push a `main` y realiza el build, push a ECR y redespliegue en ECS de los tres servicios en un solo job.
-
-### Flujo del pipeline
+### Flujo de trabajo
 
 ```
-push a main
-    │
-    ▼
-Checkout código
-    │
-    ▼
-Configurar credenciales AWS
-    │
-    ▼
-Login en ECR
-    │
-    ├── Build y Push backend-ventas
-    ├── Build y Push backend-despachos
-    └── Build y Push frontend
-    │
-    ▼
-Forzar redespliegue en ECS
+┌─ CI: Integración Continua ──────────────────┐
+│                                               │
+│  Se dispara en: pull_request a main           │
+│                                               │
+│  backend-ventas:   mvn test                   │
+│  backend-despachos: mvn test                  │
+│  frontend:          npm ci → npm run build    │
+└───────────────────────────────────────────────┘
+
+┌─ CD: Despliegue Continuo ────────────────────┐
+│                                               │
+│  Se dispara en: push a deploy                 │
+│                                               │
+│  1. Checkout código                           │
+│  2. Login a ECR                               │
+│  3. Build y Push 3 imágenes a ECR             │
+│  4. Conectar a EKS                            │
+│  5. Crear Secret con configuración            │
+│  6. kubectl apply -f infra/k8s/               │
+│  7. kubectl set image (3 deployments)         │
+│  8. kubectl rollout status (3 deployments)    │
+│  9. Mostrar URL del frontend                  │
+└───────────────────────────────────────────────┘
 ```
 
 ### Secrets requeridos en GitHub
 
-Ve a tu repositorio → Settings → Secrets and variables → Actions → New repository secret y agrega los siguientes:
+Ve a tu repositorio → **Settings → Secrets and variables → Actions → Repository secrets** y agrega:
 
 | Secret | Descripción |
 |--------|-------------|
-| `AWS_ACCESS_KEY_ID` | Access key del LabRole (AWS Academy → AWS Details) |
+| `AWS_ACCESS_KEY_ID` | Access key del LabRole |
 | `AWS_SECRET_ACCESS_KEY` | Secret key del LabRole |
 | `AWS_SESSION_TOKEN` | Session token del LabRole |
-| `AWS_ACCOUNT_ID` | ID de tu cuenta AWS |
+| `MYSQL_ROOT_PASSWORD` | Contraseña root de MySQL |
+| `DB_ENDPOINT` | Hostname de la base de datos (`mysql`) |
+| `DB_PORT` | Puerto de la base de datos (`3306`) |
+| `DB_USERNAME` | Usuario de la base de datos (`root`) |
+| `DB_NAME_VENTAS` | Nombre de la BD de ventas (`ventas_db`) |
+| `DB_NAME_DESPACHOS` | Nombre de la BD de despachos (`despachos_db`) |
 
-> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Antes de hacer un push a `main` debes actualizar los tres secrets de AWS con las credenciales vigentes.
+> ⚠️ Las credenciales AWS expiran cada 4 horas. Actualízalas antes de hacer push a `deploy`.
 
-### Cómo actualizar los secrets de AWS
+### Cómo desplegar
 
-1. En AWS Academy → AWS Details → copia las credenciales actuales
-2. En GitHub → Settings → Secrets and variables → Actions
-3. Actualiza `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`
-4. Haz el push a `main`
+```bash
+# Trabaja en la rama de features
+git checkout feature/kubernetes-eks
+# ... haces cambios ...
+git add .
+git commit -m "descripción del cambio"
+git push origin feature/kubernetes-eks
 
-### Disparar el pipeline manualmente
+# Cuando quieras desplegar, mergea a deploy
+git checkout deploy
+git merge feature/kubernetes-eks
+git push origin deploy    # dispara el CD
+```
 
-Desde GitHub → Actions → Despliegue continuo → Run workflow.
+### Disparar el CD manualmente
+
+GitHub → Actions → Despliegue EKS en AWS → **Run workflow**.
 
 ---
 
-## Estrategia de versionamiento
+## Seguridad
 
-```
-main          ← código base inicial · push a main dispara el pipeline CI/CD
-  └── develop ← rama de integración
-        ├── feature/dockerfile-backend-ventas    ✅
-        ├── feature/dockerfile-backend-despachos ✅
-        ├── feature/dockerfile-frontend          ✅
-        ├── feature/docker-compose               ✅
-        ├── fix/jdbc-connection-mysql8           ✅
-        ├── feature/terraform-infra              ✅
-        └── feature/cicd-pipeline                ✅
-```
-
-Convención de commits:
-```
-feat: descripción de la funcionalidad agregada
-fix:  descripción del bug corregido
-docs: cambios en documentación
-```
+- **Secretos en GitHub**: todas las variables de configuración y contraseñas se almacenan en GitHub Secrets, no en el código.
+- **Secret en Kubernetes**: el pipeline crea el Secret `mysql-secret` desde GitHub Secrets al momento del despliegue. Los manifiestos K8s solo contienen referencias (`secretKeyRef`).
+- **Archivos locales**: `.env`, `mysql-secret.yml` y `terraform.tfvars` están en `.gitignore`.
+- **Templates**: `.env.example` y `terraform.tfvars.example` contienen solo placeholders, nunca valores reales.
 
 ---
 
-## Fases del proyecto
+## Cambios realizados en esta versión
 
-| Fase | Descripción | Estado |
-|------|-------------|--------|
-| **Etapa 1** | Repositorio base en GitHub | ✅ |
-| **Etapa 2** | Dockerfiles + docker-compose (despliegue local) | ✅ |
-| **Etapa 3** | Infraestructura AWS con Terraform | ✅ |
-| **Etapa 4** | Pipeline CI/CD con GitHub Actions | ✅ |
+Respecto a la versión anterior (ECS), se migró la infraestructura completamente:
+
+| Antes | Ahora |
+|-------|-------|
+| ECS Fargate | EKS (Kubernetes) |
+| Terraform en 2 etapas (`etapa_1`, `etapa_2`) | Terraform unificado en carpeta `terraform/` |
+| 1 pipeline (`cd.yml` en push a main) | CI (`ci.yml` en PR a main) + CD (`cd.yml` en push a `deploy`) |
+| Configuración hardcodeada en YAML | GitHub Secrets + `secretKeyRef` en K8s |
+| Node.js 20 | Node.js 22 |
+| 4 secrets en GitHub | 9 secrets en GitHub |
+| Swagger por IP pública de ECS | Swagger vía `kubectl port-forward` |
+| MySQL en EC2 | MySQL como Pod en EKS |
+| `nginx.conf` proxy a `localhost` | Proxy a nombres de servicio K8s |
+| Variables en docker-compose hardcodeadas | Todas externalizadas a `.env` |
