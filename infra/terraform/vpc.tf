@@ -1,5 +1,5 @@
 resource "aws_vpc" "eks_vpc" {
-  cidr_block = "10.0.0.0/16"
+  cidr_block = var.vpc_cidr
   tags = {
     Name = "${var.project_name}-vpc"
   }
@@ -7,7 +7,7 @@ resource "aws_vpc" "eks_vpc" {
 
 resource "aws_subnet" "eks_subnet_1" {
   vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = "10.0.10.0/24"
+  cidr_block              = var.subnet_1_cidr
   availability_zone       = "${var.aws_region}a"
   map_public_ip_on_launch = true
   tags = {
@@ -17,7 +17,7 @@ resource "aws_subnet" "eks_subnet_1" {
 
 resource "aws_subnet" "eks_subnet_2" {
   vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = "10.0.20.0/24"
+  cidr_block              = var.subnet_2_cidr
   availability_zone       = "${var.aws_region}b"
   map_public_ip_on_launch = true
   tags = {

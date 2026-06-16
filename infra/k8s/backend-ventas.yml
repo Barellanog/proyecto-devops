@@ -20,15 +20,30 @@ spec:
             - containerPort: 8080
           env:
             - name: DB_ENDPOINT
-              value: mysql
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_ENDPOINT
             - name: DB_PORT
-              value: "3306"
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_PORT
             - name: DB_NAME
-              value: ventas_db
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_NAME_VENTAS
             - name: DB_USERNAME
-              value: root
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_USERNAME
             - name: DB_PASSWORD
-              value: root
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
 ---
 apiVersion: v1
 kind: Service
