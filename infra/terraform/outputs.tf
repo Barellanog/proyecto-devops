@@ -17,3 +17,11 @@ output "backend_despachos_ecr_url" {
 output "frontend_ecr_url" {
   value = aws_ecr_repository.frontend.repository_url
 }
+
+output "cloudwatch_log_group" {
+  value = aws_cloudwatch_log_group.eks.name
+}
+
+output "dashboard_name" {
+  value = aws_cloudwatch_dashboard.main.dashboard_name
+}

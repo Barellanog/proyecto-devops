@@ -8,6 +8,14 @@ resource "aws_eks_cluster" "eks" {
       aws_subnet.eks_subnet_2.id
     ]
   }
+
+  enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler"
+  ]
 }
 
 resource "aws_eks_node_group" "workers" {
