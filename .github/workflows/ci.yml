@@ -1,9 +1,10 @@
 name: Integración Continua
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - deploy
+    branches-ignore: [main, deploy]
 
 jobs:
   backend-ventas:

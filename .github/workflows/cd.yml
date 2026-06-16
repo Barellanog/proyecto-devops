@@ -112,9 +112,19 @@ jobs:
         run: |
           kubectl rollout status deployment/frontend
 
-      - name: Obtener URL del frontend
+      - name: Obtener URLs de la aplicacion
         run: |
+          FRONTEND_URL=$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo ""
           echo "========================================"
-          kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+          echo "  DESPLIEGUE COMPLETADO EXITOSAMENTE"
+          echo "========================================"
+          echo ""
+          echo "  Frontend:             http://$FRONTEND_URL"
+          echo "  API Ventas:           http://$FRONTEND_URL/api/v1/ventas"
+          echo "  API Despachos:        http://$FRONTEND_URL/api/v1/despachos"
+          echo ""
+          echo "  Swagger (local):      kubectl port-forward svc/backend-ventas 8080:8080"
+          echo "                        http://localhost:8080/swagger-ui.html"
           echo ""
           echo "========================================"
