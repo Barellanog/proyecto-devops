@@ -3,8 +3,6 @@ name: Integración Continua
 on:
   pull_request:
     branches: [main]
-  push:
-    branches-ignore: [main, deploy]
 
 jobs:
   backend-ventas:
@@ -52,10 +50,10 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Configurar Node 20
+      - name: Configurar Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: front_despacho/package-lock.json
 
