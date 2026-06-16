@@ -19,7 +19,7 @@ proyecto-devops/
 │   │   ├── backend-ventas.yml          # Deployment + Service Backend Ventas
 │   │   ├── backend-despachos.yml       # Deployment + Service Backend Despachos
 │   │   ├── frontend.yml                # Deployment + Service Frontend (LoadBalancer)
-│   │   └── mysql-secret.yml            # Secret K8s (NO se sube a GitHub)
+│   │   └── hpa.yml                     # Horizontal Pod Autoscaler
 │   └── terraform/
 │       ├── providers.tf                # Provider AWS + LabRole
 │       ├── variables.tf                # Variables reutilizables
@@ -28,7 +28,8 @@ proyecto-devops/
 │       ├── ecr.tf                      # Repositorios ECR (3)
 │       ├── eks.tf                      # Cluster EKS + Node Group
 │       ├── outputs.tf                  # Outputs de Terraform
-│       └── terraform.tfvars.example    # Template de variables
+│       ├── cloudwatch.tf               # CloudWatch Logs + Dashboard
+│       └── dashboard.tf                # Dashboard de monitoreo
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                      # Integración Continua (PR a main)
@@ -53,6 +54,8 @@ proyecto-devops/
 | Contenedores | Docker · Docker Compose |
 | Infraestructura | Terraform · AWS EKS · ECR |
 | Orquestación | Kubernetes (EKS) |
+| Autoscaling | Horizontal Pod Autoscaler (HPA) + Node Group scaling |
+| Monitoreo | CloudWatch Logs + Dashboard + Metrics Server |
 | CI/CD | GitHub Actions (CI + CD separados) |
 
 ---
@@ -185,48 +188,67 @@ LoadBalancer (frontend — puerto 80)
 ```
 
 ### Requisitos
-- Terraform instalado
-- AWS CLI instalado y configurado
-- kubectl instalado
+- Terraform
+- AWS CLI
+- kubectl
+- Docker Desktop (para desarrollo local)
 
-### 1. Configurar credenciales AWS
+### ⚡ Setup rápido (recomendado)
 
-Desde AWS Academy → AWS Details, copia las credenciales y configura:
+El script `setup.sh` automatiza todo el proceso:
 
 ```bash
+# PASO 1 — Configurar credenciales AWS
 aws configure
-```
+# (usa las credenciales del LabRole de AWS Academy)
 
-> ⚠️ Las credenciales del LabRole expiran cada 4 horas. Debes renovarlas antes de cada operación.
+# PASO 2 — Ejecutar script de setup
+./setup.sh
+# crea .env
+# verifica herramientas y credenciales
 
-### 2. Crear archivo de variables Terraform
-
-```bash
-cd infra/terraform
-cp terraform.tfvars.example terraform.tfvars
-```
-
-Edita `terraform.tfvars` si necesitas cambiar algún valor. El archivo no se sube a GitHub.
-
-### 3. Crear la infraestructura
-
-```bash
+# PASO 3 — Crear infraestructura en AWS
 cd infra/terraform
 terraform init
-terraform plan
 terraform apply
+# ⏱️ ~12-15 minutos
+
+# PASO 4 — Conectar kubectl y Metrics Server
+cd ../..
+./setup.sh
+# conecta kubectl, instala Metrics Server, muestra estado
+
+# PASO 5 — Configurar GitHub Secrets (ver sección Secrets)
+
+# PASO 6 — Disparar el despliegue
+git checkout deploy
+git merge main
+git push origin deploy
 ```
 
-> ⏱️ El `apply` tarda aproximadamente 12–15 minutos por el cluster EKS.
+> ⚠️ Las credenciales del LabRole expiran cada 4 horas.
 
-### 4. Conectar kubectl al cluster
+### Setup manual (alternativa)
+
+Si prefieres hacerlo paso a paso sin el script:
 
 ```bash
+# 1. Archivos locales
+cp .env.example .env
+
+# 2. Infraestructura
+cd infra/terraform
+terraform init
+terraform apply
+
+# 3. Conectar kubectl
 aws eks update-kubeconfig --region us-east-1 --name devops-parcial2-cluster
-kubectl get nodes    # deberías ver 2 nodos Ready
+
+# 4. Metrics Server (necesario para HPA)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-### 5. Destruir infraestructura
+### Destruir infraestructura
 
 ```bash
 cd infra/terraform
@@ -305,12 +327,50 @@ GitHub → Actions → Despliegue EKS en AWS → **Run workflow**.
 
 ---
 
+## Autoscaling
+
+### Horizontal Pod Autoscaler (HPA)
+
+Los backends escalan automáticamente según CPU y memoria:
+
+| Recurso | Min réplicas | Max réplicas | CPU target | Mem target |
+|---------|:-----------:|:-----------:|:----------:|:----------:|
+| `backend-ventas` | 2 | 4 | 50% | 70% |
+| `backend-despachos` | 2 | 4 | 50% | 70% |
+
+```bash
+# Ver estado del HPA
+kubectl get hpa
+
+# Ver métricas en tiempo real
+kubectl top pods
+
+# Simular carga (para demo)
+kubectl run load-test --image=busybox --restart=Never -- /bin/sh -c "
+  while true; do
+    wget -q -O- http://backend-ventas:8080/api/v1/ventas
+    sleep 0.1
+  done
+"
+```
+
+### Node Group Scaling
+
+| Parámetro | Valor |
+|-----------|-------|
+| Mínimo | 1 nodo |
+| Deseado | 2 nodos |
+| Máximo | 2 nodos |
+| Tipo | t3.medium |
+
+---
+
 ## Seguridad
 
 - **Secretos en GitHub**: todas las variables de configuración y contraseñas se almacenan en GitHub Secrets, no en el código.
-- **Secret en Kubernetes**: el pipeline crea el Secret `mysql-secret` desde GitHub Secrets al momento del despliegue. Los manifiestos K8s solo contienen referencias (`secretKeyRef`).
-- **Archivos locales**: `.env`, `mysql-secret.yml` y `terraform.tfvars` están en `.gitignore`.
-- **Templates**: `.env.example` y `terraform.tfvars.example` contienen solo placeholders, nunca valores reales.
+- **Secret en Kubernetes**: el pipeline CD crea el Secret `mysql-secret` desde GitHub Secrets al momento del despliegue. Los manifiestos K8s solo contienen referencias (`secretKeyRef`). No existe archivo YAML de secret en el repositorio.
+- **Archivo local**: solo `.env` está en `.gitignore`. Las variables de Terraform viven en `variables.tf` con defaults seguros.
+- **Template**: `.env.example` contiene solo placeholders, nunca valores reales.
 
 ---
 
@@ -330,3 +390,5 @@ Respecto a la versión anterior (ECS), se migró la infraestructura completament
 | MySQL en EC2 | MySQL como Pod en EKS |
 | `nginx.conf` proxy a `localhost` | Proxy a nombres de servicio K8s |
 | Variables en docker-compose hardcodeadas | Todas externalizadas a `.env` |
+| Sin autoscaling | HPA en backends + Node Group scaling |
+| Sin monitoreo | CloudWatch Logs + Dashboard + Metrics Server |

@@ -29,6 +29,7 @@ public class Venta {
     @NotNull(message = "Fecha de compra es obligatoria")
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)  // Especifica el formato de fecha
     private LocalDate fechaCompra;
+    @Builder.Default
     @NotNull(message = "El campo de despacho debe ser proporcionado")
     private Boolean despachoGenerado = false;
 }
