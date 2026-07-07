@@ -1,0 +1,15 @@
+# Ignora dependencias locales
+node_modules/
+
+# Ignora archivos de build
+dist/
+
+# Ignora control de versiones
+.git/
+.gitignore
+
+# Ignora archivos de contenedorización
+Dockerfile*
+
+# Ignora archivos temporales
+*.log
